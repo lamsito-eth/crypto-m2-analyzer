@@ -104,22 +104,52 @@ class CryptoM2Analyzer:
         return df
     
     def analyze_lag(self, crypto_df, m2_df, max_lag_weeks=20):
-        """Analyze optimal lag"""
+        """Analyze optimal lag with improved error handling"""
+        # Merge datasets
         merged = pd.merge(crypto_df, m2_df[['date', 'm2_zscore']], on='date', how='inner')
-        merged = merged.dropna().sort_values('date')
+        merged = merged.dropna().sort_values('date').reset_index(drop=True)
+        
+        # Debug info
+        st.write(f"🔍 Debug: Merged data has {len(merged)} rows")
+        st.write(f"📊 Date range: {merged['date'].min()} to {merged['date'].max()}")
+        
+        # Check we have enough data
+        if len(merged) < 100:
+            st.error(f"❌ Not enough overlapping data! Only {len(merged)} rows after merge. Need at least 100.")
+            return 0, 0.0, []
         
         correlations = []
         for lag_weeks in range(0, max_lag_weeks + 1):
             lag_days = lag_weeks * 7
             test_df = merged.copy()
+            
+            # Shift M2 forward (so it LEADS crypto)
             test_df['m2_zscore_shifted'] = test_df['m2_zscore'].shift(lag_days)
             test_df = test_df.dropna()
             
-            if len(test_df) > 30:
-                corr = test_df['market_cap_billions'].corr(test_df['m2_zscore_shifted'])
-                correlations.append((lag_weeks, corr))
+            # Need at least 50 points for valid correlation
+            if len(test_df) >= 50:
+                try:
+                    # Calculate correlation
+                    corr = test_df['market_cap_billions'].corr(test_df['m2_zscore_shifted'])
+                    
+                    # Check if correlation is valid
+                    if pd.notna(corr) and not np.isinf(corr):
+                        correlations.append((lag_weeks, corr))
+                    else:
+                        st.write(f"⚠️ Invalid correlation at lag {lag_weeks}: {corr}")
+                except Exception as e:
+                    st.write(f"⚠️ Error at lag {lag_weeks}: {str(e)}")
+                    continue
         
-        best_lag, best_corr = max(correlations, key=lambda x: abs(x[1]))
+        # Check if we got any valid correlations
+        if not correlations:
+            st.error("❌ No valid correlations found! Check your data.")
+            return 0, 0.0, []
+        
+        # Find best correlation (highest absolute value)
+        best_lag, best_corr = max(correlations, key=lambda x: abs(x[1]) if pd.notna(x[1]) else 0)
+        
         return best_lag, best_corr, correlations
     
     def process_uploaded_data(self, crypto_file, m2_file):
