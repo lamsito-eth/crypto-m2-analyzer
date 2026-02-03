@@ -178,9 +178,9 @@ class CryptoM2Analyzer:
             value_col = value_cols[0] if value_cols else m2_df.columns[1]
             
             m2_df = m2_df[[date_col, value_col]].copy()
-            m2_df.columns = ['date', 'm2_billions']
+            m2_df.columns = ['date', 'm2_zscore']  # Changed from m2_billions to m2_zscore
             m2_df['date'] = pd.to_datetime(m2_df['date'])
-            m2_df['m2_billions'] = pd.to_numeric(m2_df['m2_billions'], errors='coerce')
+            m2_df['m2_zscore'] = pd.to_numeric(m2_df['m2_zscore'], errors='coerce')
             
             return crypto_df.dropna(), m2_df.dropna()
         except Exception as e:
