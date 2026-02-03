@@ -202,23 +202,25 @@ class CryptoM2Analyzer:
             return None, None
 
 def create_chart(crypto_df, m2_df, lag_weeks, correlation):
-    """Create the main chart with clean zones"""
+    """Create chart with LARGE smooth zones like StreetStats"""
     merged = pd.merge(crypto_df, m2_df[['date', 'm2_zscore']], on='date', how='inner').dropna()
     
     lag_days = lag_weeks * 7
     merged['m2_zscore_lagged'] = merged['m2_zscore'].shift(lag_days)
     merged = merged.dropna()
     
-    # Create figure with 2 subplots
     fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 12), 
                                     gridspec_kw={'height_ratios': [2.5, 1], 'hspace': 0.08})
     
     # ============================================
-    # Use M2 WITHOUT additional smoothing
-    # (data should already be clean)
+    # CRITICAL: Use LONG moving average for zones
+    # This creates LARGE continuous zones, not daily stripes
     # ============================================
     
-    # Identify expansion/contraction zones
+    # 6-month (180 day) moving average for SMOOTH zones
+    merged['m2_smooth_zones'] = merged['m2_zscore_lagged'].rolling(window=180, min_periods=30, center=True).mean()
+    
+    # Identify LARGE expansion/contraction zones
     positive_zones = []
     negative_zones = []
     
@@ -226,7 +228,8 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
     current_zone_positive = None
     
     for i in range(len(merged)):
-        is_positive = merged.iloc[i]['m2_zscore_lagged'] > 0
+        # Use SMOOTHED value for zones, not daily value
+        is_positive = merged.iloc[i]['m2_smooth_zones'] > 0
         
         if current_zone_start is None:
             current_zone_start = merged.iloc[i]['date']
@@ -249,18 +252,16 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
         else:
             negative_zones.append((current_zone_start, zone_end))
     
-    # Plot LARGE background zones on both charts
+    # Plot LARGE background zones
     for start, end in positive_zones:
-        ax1.axvspan(start, end, alpha=0.25, color='#4CAF50', zorder=0)
-        ax2.axvspan(start, end, alpha=0.25, color='#4CAF50', zorder=0)
+        ax1.axvspan(start, end, alpha=0.3, color='#2d5016', zorder=0)
+        ax2.axvspan(start, end, alpha=0.3, color='#2d5016', zorder=0)
     
     for start, end in negative_zones:
-        ax1.axvspan(start, end, alpha=0.25, color='#F44336', zorder=0)
-        ax2.axvspan(start, end, alpha=0.25, color='#F44336', zorder=0)
+        ax1.axvspan(start, end, alpha=0.3, color='#5c1a1a', zorder=0)
+        ax2.axvspan(start, end, alpha=0.3, color='#5c1a1a', zorder=0)
     
-    # ============================================
-    # TOP CHART: Crypto Market Cap
-    # ============================================
+    # TOP CHART: Crypto line
     ax1.plot(merged['date'], merged['market_cap_billions'],
             color='white', linewidth=3, label='Total Crypto Market Cap', zorder=5)
     
@@ -273,12 +274,9 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
     ax1.legend(loc='upper left', fontsize=13, framealpha=0.95)
     ax1.tick_params(axis='x', labelbottom=False)
     
-    # ============================================
-    # BOTTOM CHART: M2 Z-Score bars
-    # ============================================
+    # BOTTOM CHART: M2 bars (use ORIGINAL values, not smoothed)
     positive = merged['m2_zscore_lagged'] >= 0
     
-    # Use WIDER bars
     bar_width = 5
     
     ax2.bar(merged[positive]['date'], merged[positive]['m2_zscore_lagged'],
