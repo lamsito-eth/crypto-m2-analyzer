@@ -188,7 +188,7 @@ class CryptoM2Analyzer:
             return None, None
 
 def create_chart(crypto_df, m2_df, lag_weeks, correlation):
-    """Create the main chart with LARGE clean zones"""
+    """Create the main chart with clean zones"""
     merged = pd.merge(crypto_df, m2_df[['date', 'm2_zscore']], on='date', how='inner').dropna()
     
     lag_days = lag_weeks * 7
@@ -200,11 +200,11 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
                                     gridspec_kw={'height_ratios': [2.5, 1], 'hspace': 0.08})
     
     # ============================================
-    # SMOOTH M2 for CLEAN ZONES (not daily noise!)
+    # Use M2 WITHOUT additional smoothing
+    # (data should already be clean)
     # ============================================
-    merged['m2_smooth'] = merged['m2_zscore_lagged'].rolling(window=90, min_periods=1).mean()
     
-    # Identify expansion/contraction zones based on SMOOTHED M2
+    # Identify expansion/contraction zones
     positive_zones = []
     negative_zones = []
     
@@ -212,7 +212,7 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
     current_zone_positive = None
     
     for i in range(len(merged)):
-        is_positive = merged.iloc[i]['m2_smooth'] > 0
+        is_positive = merged.iloc[i]['m2_zscore_lagged'] > 0
         
         if current_zone_start is None:
             current_zone_start = merged.iloc[i]['date']
@@ -260,7 +260,7 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
     ax1.tick_params(axis='x', labelbottom=False)
     
     # ============================================
-    # BOTTOM CHART: M2 Z-Score bars (BIGGER!)
+    # BOTTOM CHART: M2 Z-Score bars
     # ============================================
     positive = merged['m2_zscore_lagged'] >= 0
     
