@@ -91,7 +91,21 @@ class CryptoM2Analyzer:
             return None
     
     def calculate_m2_zscore(self, df, window=90):
-        """Calculate M2 Z-Score"""
+        """Calculate M2 Z-Score if needed, or return as-is if already Z-Score"""
+        # Check if this is already a Z-Score (values between -3 and +3 typically)
+        # or raw M2 data (values in billions, much larger)
+        
+        if 'm2_zscore' in df.columns:
+            # Already has Z-Score column
+            if df['m2_zscore'].abs().max() < 10:
+                # Values look like Z-Scores (typically -3 to +3)
+                print("✅ Data already contains Z-Score, skipping calculation")
+                return df
+        
+        # If we have m2_billions column, calculate Z-Score
+        if 'm2_billions' not in df.columns:
+            raise ValueError("M2 data must have either 'm2_zscore' or 'm2_billions' column")
+        
         df = df.set_index('date').resample('D').interpolate().reset_index()
         df['m2_pct_change_3m'] = df['m2_billions'].pct_change(periods=window) * 100
         
