@@ -158,7 +158,7 @@ class CryptoM2Analyzer:
             return None, None
 
 def create_chart(crypto_df, m2_df, lag_weeks, correlation):
-    """Create the main chart with zones and separate panels"""
+    """Create the main chart with LARGE clean zones"""
     merged = pd.merge(crypto_df, m2_df[['date', 'm2_zscore']], on='date', how='inner').dropna()
     
     lag_days = lag_weeks * 7
@@ -166,10 +166,15 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
     merged = merged.dropna()
     
     # Create figure with 2 subplots
-    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(18, 12), 
-                                    gridspec_kw={'height_ratios': [2, 1], 'hspace': 0.1})
+    fig, (ax1, ax2) = plt.subplots(2, 1, figsize=(20, 12), 
+                                    gridspec_kw={'height_ratios': [2.5, 1], 'hspace': 0.08})
     
-    # Identify expansion/contraction zones
+    # ============================================
+    # SMOOTH M2 for CLEAN ZONES (not daily noise!)
+    # ============================================
+    merged['m2_smooth'] = merged['m2_zscore_lagged'].rolling(window=90, min_periods=1).mean()
+    
+    # Identify expansion/contraction zones based on SMOOTHED M2
     positive_zones = []
     negative_zones = []
     
@@ -177,13 +182,12 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
     current_zone_positive = None
     
     for i in range(len(merged)):
-        is_positive = merged.iloc[i]['m2_zscore_lagged'] > 0
+        is_positive = merged.iloc[i]['m2_smooth'] > 0
         
         if current_zone_start is None:
             current_zone_start = merged.iloc[i]['date']
             current_zone_positive = is_positive
         elif is_positive != current_zone_positive:
-            # Zone ended, save it
             zone_end = merged.iloc[i-1]['date']
             if current_zone_positive:
                 positive_zones.append((current_zone_start, zone_end))
@@ -201,52 +205,60 @@ def create_chart(crypto_df, m2_df, lag_weeks, correlation):
         else:
             negative_zones.append((current_zone_start, zone_end))
     
-    # Plot background zones on both charts
+    # Plot LARGE background zones on both charts
     for start, end in positive_zones:
-        ax1.axvspan(start, end, alpha=0.15, color='#4CAF50', zorder=0)
-        ax2.axvspan(start, end, alpha=0.15, color='#4CAF50', zorder=0)
+        ax1.axvspan(start, end, alpha=0.25, color='#4CAF50', zorder=0)
+        ax2.axvspan(start, end, alpha=0.25, color='#4CAF50', zorder=0)
     
     for start, end in negative_zones:
-        ax1.axvspan(start, end, alpha=0.15, color='#F44336', zorder=0)
-        ax2.axvspan(start, end, alpha=0.15, color='#F44336', zorder=0)
+        ax1.axvspan(start, end, alpha=0.25, color='#F44336', zorder=0)
+        ax2.axvspan(start, end, alpha=0.25, color='#F44336', zorder=0)
     
-    # TOP CHART: Crypto Market Cap (line only, no bars)
+    # ============================================
+    # TOP CHART: Crypto Market Cap
+    # ============================================
     ax1.plot(merged['date'], merged['market_cap_billions'],
-            color='white', linewidth=2.5, label='Total Crypto Market Cap', zorder=5)
+            color='white', linewidth=3, label='Total Crypto Market Cap', zorder=5)
     
-    ax1.set_ylabel('Market Cap (Billions USD)', fontsize=14, fontweight='bold', color='white')
+    ax1.set_ylabel('Market Cap (Billions USD)', fontsize=16, fontweight='bold', color='white')
     ax1.set_title(f'Total Crypto Market Cap vs M2 Liquidity Zones\nM2 LEADS by ~{lag_weeks} weeks | Correlation: {correlation:.3f}',
-                 fontsize=17, fontweight='bold', pad=20, color='white')
+                 fontsize=18, fontweight='bold', pad=20, color='white')
     
-    ax1.grid(True, alpha=0.15, color='gray', linestyle='--', linewidth=0.5)
+    ax1.grid(True, alpha=0.1, color='gray', linestyle='-', linewidth=0.5)
     ax1.set_facecolor('#0a0a0a')
-    ax1.legend(loc='upper left', fontsize=12, framealpha=0.9)
-    ax1.tick_params(axis='x', labelbottom=False)  # Hide x labels on top chart
+    ax1.legend(loc='upper left', fontsize=13, framealpha=0.95)
+    ax1.tick_params(axis='x', labelbottom=False)
     
-    # BOTTOM CHART: M2 Z-Score bars only
+    # ============================================
+    # BOTTOM CHART: M2 Z-Score bars (BIGGER!)
+    # ============================================
     positive = merged['m2_zscore_lagged'] >= 0
     
+    # Use WIDER bars
+    bar_width = 5
+    
     ax2.bar(merged[positive]['date'], merged[positive]['m2_zscore_lagged'],
-           color='#4CAF50', alpha=0.9, width=3, label='M2 Expansion', zorder=5)
+           color='#4CAF50', alpha=0.95, width=bar_width, label='M2 Expansion', zorder=5, edgecolor='none')
     ax2.bar(merged[~positive]['date'], merged[~positive]['m2_zscore_lagged'],
-           color='#F44336', alpha=0.9, width=3, label='M2 Contraction', zorder=5)
+           color='#F44336', alpha=0.95, width=bar_width, label='M2 Contraction', zorder=5, edgecolor='none')
     
-    ax2.axhline(y=0, color='white', linestyle='-', linewidth=1, alpha=0.5, zorder=4)
+    ax2.axhline(y=0, color='white', linestyle='-', linewidth=1.5, alpha=0.7, zorder=4)
     
-    ax2.set_ylabel(f'M2 Z-Score\n(+{lag_weeks} weeks lead)', fontsize=13, fontweight='bold', color='white')
-    ax2.set_xlabel('Date', fontsize=13, fontweight='bold', color='white')
+    ax2.set_ylabel(f'M2 Z-Score\n(+{lag_weeks}w lead)', fontsize=15, fontweight='bold', color='white')
+    ax2.set_xlabel('Year', fontsize=15, fontweight='bold', color='white')
     
-    ax2.grid(True, alpha=0.15, color='gray', linestyle='--', linewidth=0.5)
+    ax2.grid(True, alpha=0.1, color='gray', linestyle='-', linewidth=0.5)
     ax2.set_facecolor('#0a0a0a')
-    ax2.legend(loc='upper left', fontsize=11, framealpha=0.9)
+    ax2.legend(loc='upper left', fontsize=12, framealpha=0.95)
     
     # Format x-axis
     for ax in [ax1, ax2]:
         ax.xaxis.set_major_formatter(mdates.DateFormatter('%Y'))
         ax.xaxis.set_major_locator(mdates.YearLocator())
-        ax.tick_params(colors='white')
+        ax.tick_params(colors='white', labelsize=12)
         for spine in ax.spines.values():
             spine.set_color('#333333')
+            spine.set_linewidth(1.5)
     
     fig.patch.set_facecolor('#1a1a1a')
     plt.tight_layout()
